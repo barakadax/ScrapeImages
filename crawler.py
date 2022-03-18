@@ -10,9 +10,10 @@ class scrape_pictures(object):
         self.__counter = 1
         self.__result = list()
         self.__start_dir = os.getcwd()
-        self.__invalid_chars_for_file_name = "\\/:*?\"<>|\0"
+        self.__invalid_chars_for_file_name = "\\/:*?\"<>|\0&"
 
     def execute(self, url, depth) -> None:
+        self.__counter = 1
         self.__internal_logic(url, depth)
         os.chdir(self.__start_dir)
         self.__save_JSON()
@@ -84,7 +85,7 @@ class scrape_pictures(object):
             return None
         return picture_list
 
-    def __get_picture_name(self, pic_data) -> str:  # command injection safe?
+    def __get_picture_name(self, pic_data) -> str:
         if pic_data:
             image_name = pic_data
             for illegal_char in self.__invalid_chars_for_file_name:
@@ -111,7 +112,6 @@ class scrape_pictures(object):
     def __download_pictures(self, url, picture_list, depth) -> None:
         for image in picture_list:
             image_name = self.__get_picture_name(image['alt'])
-            
             image_source = image['src']
             image_link = url + image_source
             image_data = requests.get(url + image_source)
