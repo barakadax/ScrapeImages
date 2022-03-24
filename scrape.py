@@ -17,21 +17,31 @@ class scraper(object):
         self._invalid_HTML_url: deque = deque(maxlen=1000)
         self._invalid_images_url: deque = deque(maxlen=1000)
         self._invalid_chars_for_naming: str = "\\/:*?\"<>|\0&%"
+    
+    def _check_page_response(self, page_response: requests.Response) -> bool:
+        if page_response.is_redirect:
+            print(f"<<< URL: \"{page_response.url}\" is redirecting to a different website, aborting this URL run for security measures.")
+            return True
+        elif page_response.status_code != 200:
+            print(f"<<< Couldn\'t reach \"{page_response.url}\" Got {page_response.status_code} as response, aborting this URL run.")
+            return True
+        return False
+
+    def _is_HTML(self, page_data: requests.Response) -> bool:
+        if self._check_page_response(page_data):
+            return False
+        elif 'html' not in page_data.headers['content-type']:
+            self._invalid_HTML_url.append(page_data.url)
+            print(f"<<< URL: \"{page_data.url}\" site is not html type website, aborting this URL run.")
+            return False
+        return True
 
     def _get_page_data(self, url: str) -> bs4.BeautifulSoup:
         if not url or not validators.url(url):
             print(f"<<< URL: \"{url}\" is empty input or not a real website URL, aborting this URL run.")
             return None
         page_data = requests.get(url)
-        if page_data.is_redirect:
-            print(f"<<< URL: \"{url}\" is redirecting to a different website, aborting this URL run for security measures.")
-            return None
-        elif page_data.status_code != 200:
-            print(f"<<< URL: \"{url}\" has returned response: {page_data.status_code}, aborting this URL run.")
-            return None
-        elif 'html' not in page_data.headers['content-type']:
-            self._invalid_HTML_url.append(url)
-            print(f"<<< URL: \"{url}\" site is not html type website, aborting this URL run.")
+        if not self._is_HTML(page_data):
             return None
         return bs4.BeautifulSoup(page_data.text, 'html.parser')
 
@@ -78,9 +88,10 @@ class scraper(object):
             return None
 
         if not validators.url(image_source_url):
-            if url[:-1] != '/' and image_source_url[0] != '/':
-                image_source_url = '/' + image_source_url
-            image_source_url = url + image_source_url
+            if image_source_url[0] != '/' and url[-1] != '/':
+                image_source_url = url + '/' + image_source_url
+            else:
+                image_source_url = url + image_source_url
 
         if not validators.url(image_source_url):
             print(f"<<< Invalid image url: {url}")
@@ -88,11 +99,7 @@ class scraper(object):
         return image_source_url
 
     def _is_image(self, response: requests.Response) -> bool:
-        if response.is_redirect:
-            print(f"<<< Image redirecting to a different website, won't continue to download this image: {response.url}")
-            return False
-        elif response.status_code != 200:
-            print(f"<<< Couldn\'t reach {response.url} --- Got {response.status_code} as response.")
+        if self._check_page_response(response):
             return False
         elif 'image' not in response.headers['content-type']:
             self._invalid_images_url.append(response.url)
@@ -124,9 +131,9 @@ class scraper(object):
             image_name = self._normalize_image_name(image.get('alt', ""))
             self._save_image(current_folder, image_name, image_response)
             self._result_json.append({'websiteURL': url, 'imageSource': image_url, 'depth': depth})
-            print(f"<<< Downloaded: {image_name} --- from: {image_url}")
+            print(f"<<< Downloaded: \"{image_name}\" from: \"{image_url}\"")
 
-    def _remove_folder_if_empty(self, url: str, current_folder: pathlib.Path) -> bool:
+    def _remove_folder_if_empty(self, current_folder: pathlib.Path) -> bool:
         if len(list(current_folder.iterdir())) == 0:
             current_folder.rmdir()
             return True
@@ -152,7 +159,7 @@ class scraper(object):
             return
         new_path: pathlib.Path = self._create_dir(folder_name)
         self._download_images(images_list, url, depth, new_path)
-        if self._remove_folder_if_empty(url, new_path):
+        if self._remove_folder_if_empty(new_path):
             print(f"<<< Didn\'t download any photo for {url} deleting folder: {new_path.name}", end='\n\n')
         else:
             print(f"<<< Done downloading images from {url}", end='\n\n')
